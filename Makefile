@@ -1,10 +1,9 @@
 BREW_MISSING="Brew is missing from your PATH. Install brew (https://brew.sh/) and/or fix your config, then re-run this script."
-DOCKER_MISSING="Docker is missing from your PATH. Install docker (https://confluence.schrodinger.com/display/LDE/Docker+Setup) and/or fix your config, then re-run this script."
+DOCKER_MISSING="Docker is missing from your PATH."
 DOCKER_STOPPED="We were unable to invoke 'docker ps' -- is Docker running? is the daemon's socket file accessible to your current user?"
 REDUCE_PERMISSIONS="Do not run this as the root user! Please re-run as your normal user"
 EMAIL="..."
 DIR=$(CURDIR)
-LOG_FILE="/tmp/livedesign-deploy.log"
 UNAME := $(shell uname)
 
 ifeq ($(UNAME),Darwin)
