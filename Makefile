@@ -234,3 +234,8 @@ popeye:
 stern:
 	wget https://github.com/wercker/stern/releases/download/1.10.0/stern_linux_amd64 -O /usr/local/bin/stern
 	chmod a+x /usr/local/bin/stern
+
+.PHONY: kube-bench
+kube-bench:
+	curl -L https://github.com/aquasecurity/kube-bench/releases/download/v0.0.34/kube-bench_0.0.34_linux_amd64.tar.gz | tar xzv -C /usr/local/bin kube-bench
+	chmod a+x /usr/local/bin/kube-bench
