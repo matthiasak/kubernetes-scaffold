@@ -21,7 +21,7 @@ else
 endif
 
 GO_VERSION := "1.12.9"
-DIVE_VERSION := "0.7.2"
+DIVE_VERSION := "0.8.1"
 
 .PHONY: env
 .DEFAULT_GOAL := env
@@ -34,10 +34,10 @@ else
 endif
 
 .PHONY: mac
-mac: ensure-xcode kind k8s-mac go-mac jq-mac kubefwd-mac tilt-mac helm-v3 setup-cluster
+mac: ensure-xcode k3d k8s-mac go-mac jq-mac kubefwd-mac tilt-mac helm-v3 setup-cluster
 
 .PHONY: linux
-linux: docker-usermod kind k8s-linux go-linux jq-linux kubefwd-linux tilt-linux helm-v3 setup-cluster
+linux: docker-usermod k3d k8s-linux go-linux jq-linux kubefwd-linux tilt-linux helm-v3 setup-cluster
 
 .PHONY: ensure-sudo-access
 ensure-sudo-access:
@@ -55,7 +55,7 @@ hard-purge-containers: ensure-sudo-access
 	sudo service docker start
 
 .PHONY: setup-cluster
-setup-cluster: kind-create-cluster nginx kubedb
+setup-cluster: k3d-create-cluster nginx kubedb
 
 .PHONY: install-docker-ubuntu
 install-docker-ubuntu:
@@ -96,7 +96,7 @@ kind: ensure-usr-local-bin-writeable
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.0.0-beta.3-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.0.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
 
 .PHONY: k8s-mac
@@ -239,3 +239,38 @@ stern:
 kube-bench:
 	curl -L https://github.com/aquasecurity/kube-bench/releases/download/v0.0.34/kube-bench_0.0.34_linux_amd64.tar.gz | tar xzv -C /usr/local/bin kube-bench
 	chmod a+x /usr/local/bin/kube-bench
+
+.PHONY: img-tool
+img-tool:
+	curl -fSL "https://github.com/genuinetools/img/releases/download/v0.5.7/img-linux-amd64" -o "/usr/local/bin/img" && chmod a+x "/usr/local/bin/img"
+
+clear-linux-runc:
+	sudo swupd bundle-add cloud-control cloud-native-basic
+	sudo docker-set-default-runtime -r runc
+
+.PHONY: k3d
+k3d:
+	curl -s https://raw.githubusercontent.com/rancher/k3d/master/install.sh | bash
+
+.PHONY: k3d-delete-cluster
+k3d-delete-cluster:
+	k3d d -a || echo "No existing clusters found."
+	echo "END WARNING"
+	rm -f $(HOME)/.kube/config
+
+.PHONY: k3d-create-cluster
+k3d-create-cluster: k3d-delete-cluster k3d-local-registry
+	k3d create --publish 8080:80 8443:443 --wait 0 --auto-restart --volume /home/${USER}/.k3d/config.toml.tmpl:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+	docker network connect k3d-k3s-default registry.local
+	echo "127.0.0.1 registry.local" | sudo tee -a /etc/hosts
+	k3d start
+	sleep 10
+	ln -sf `k3d get-kubeconfig` $(HOME)/.kube/config
+
+.PHONY: k3d-local-registry
+k3d-local-registry:
+	docker container rm --force registry.local && docker volume rm local_registry || echo "registry currently not running"
+	docker volume create local_registry
+	docker container run -d --name registry.local -v local_registry:/var/lib/registry --restart always -p 5000:5000 registry:2
+	mkdir -p /home/${USER}/.k3d
+	cat yaml/config.toml.tmpl > /home/$(USER)/.k3d/config.toml.tmpl
