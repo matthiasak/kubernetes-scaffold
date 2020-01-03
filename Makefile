@@ -34,10 +34,10 @@ else
 endif
 
 .PHONY: mac
-mac: ensure-xcode k3d k8s-mac go-mac jq-mac kubefwd-mac tilt-mac helm-v3 setup-cluster
+mac: ensure-xcode k3d kind k8s-mac go-mac jq-mac kubefwd-mac tilt-mac helm-v3 setup-cluster
 
 .PHONY: linux
-linux: docker-usermod k3d k8s-linux go-linux jq-linux kubefwd-linux tilt-linux helm-v3 setup-cluster
+linux: docker-usermod k3d kind k8s-linux go-linux jq-linux kubefwd-linux tilt-linux helm-v3 setup-cluster
 
 .PHONY: ensure-sudo-access
 ensure-sudo-access:
@@ -55,7 +55,8 @@ hard-purge-containers: ensure-sudo-access
 	sudo service docker start
 
 .PHONY: setup-cluster
-setup-cluster: k3d-create-cluster nginx kubedb
+# setup-cluster: k3d-create-cluster nginx kubedb
+setup-cluster: kind-create-cluster nginx kubedb
 
 .PHONY: install-docker-ubuntu
 install-docker-ubuntu:
@@ -96,8 +97,10 @@ kind: ensure-usr-local-bin-writeable
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.0.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.0.2-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
+	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+	helm repo update
 
 .PHONY: k8s-mac
 k8s-mac: ensure-brew
@@ -189,7 +192,7 @@ istio:
 .PHONY: nginx
 nginx:
 	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
-	helm upgrade --install ingress stable/nginx-ingress --set rbac.create=true --set serviceAccount.create=true --set controller.service.type=ClusterIP
+	helm upgrade --install ingress stable/nginx-ingress --set rbac.create=true --set serviceAccount.create=true --set controller.service.type=LoadBalancer
 
 
 .PHONY: kubedb
@@ -202,9 +205,11 @@ exec-alpine:
 
 .PHONY: certmanager
 certmanager:
-	helm upgrade --install cert-manager --namespace ingress --set ingressShim.defaultIssuerName=letsencrypt-prod --set ingressShim.defaultIssuerKind=ClusterIssuer stable/cert-manager
-	helm install --name cert-manager --namespace ingress --set ingressShim.defaultIssuerName=letsencrypt-prod --set ingressShim.defaultIssuerKind=ClusterIssuer stable/cert-manager
-	envsubst < $(DIR)yaml/certmanager-prod.yaml | kubectl apply -n ingress -f -
+	echo "Make sure to set an EMAIL env var"
+	helm repo add jetstack https://charts.jetstack.io
+	helm repo update
+	helm upgrade -i cert-manager jetstack/cert-manager --set ingressShim.defaultIssuerName=letsencrypt-prod --set ingressShim.defaultIssuerKind=ClusterIssuer --atomic
+	envsubst < ./yaml/certmanager-prod.yaml | kubectl apply -f -
 
 .PHONY: dive
 dive:
