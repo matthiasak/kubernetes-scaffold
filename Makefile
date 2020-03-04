@@ -34,10 +34,10 @@ else
 endif
 
 .PHONY: mac
-mac: ensure-xcode k3d kind k8s-mac go-mac jq-mac kubefwd-mac tilt-mac helm-v3 setup-cluster
+mac: ensure-xcode k3d kind k8s-mac go-mac jq-mac kubefwd-mac tilt helm-v3 setup-cluster
 
 .PHONY: linux
-linux: docker-usermod k3d kind k8s-linux go-linux jq-linux kubefwd-linux tilt-linux helm-v3 setup-cluster
+linux: docker-usermod k3d kind k8s-linux go-linux jq-linux kubefwd-linux tilt helm-v3 setup-cluster
 
 .PHONY: ensure-sudo-access
 ensure-sudo-access:
@@ -55,8 +55,8 @@ hard-purge-containers: ensure-sudo-access
 	sudo service docker start
 
 .PHONY: setup-cluster
-# setup-cluster: k3d-create-cluster nginx kubedb
-setup-cluster: kind-create-cluster nginx kubedb
+setup-cluster: k3d-create-cluster nginx kubedb
+# setup-cluster: kind-create-cluster nginx kubedb
 
 .PHONY: install-docker-ubuntu
 install-docker-ubuntu:
@@ -97,7 +97,7 @@ kind: ensure-usr-local-bin-writeable
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.0.2-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.1.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
 	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
 	helm repo update
@@ -141,16 +141,9 @@ kubefwd-mac: ensure-brew
 kubefwd-linux: ensure-usr-local-bin-writeable
 	curl -L https://github.com/txn2/kubefwd/releases/download/v1.8.3/kubefwd_linux_amd64.tar.gz | tar xzv kubefwd && mv kubefwd /usr/local/bin/kubefwd
 
-.PHONY: tilt-mac
-tilt-mac: ensure-brew
-	brew tap windmilleng/tap
-	brew upgrade windmilleng/tap/tilt || brew install windmilleng/tap/tilt
-	@echo "n" | tilt analytics opt out
-
-.PHONY: tilt-linux
-tilt-linux: ensure-usr-local-bin-writeable
-	curl -s https://api.github.com/repos/windmilleng/tilt/releases/latest | jq -r '.assets[] | select(.name|match("linux.x86_64")) | .browser_download_url' | xargs -I _ curl -L _ | tar -xzv tilt
-	mv tilt /usr/local/bin/tilt
+.PHONY: tilt
+tilt:
+	curl -fsSL https://raw.githubusercontent.com/windmilleng/tilt/master/scripts/install.sh | bash
 	echo "n" | tilt analytics opt out
 
 .PHONY: kind-delete-cluster
@@ -254,8 +247,12 @@ clear-linux-runc:
 	sudo docker-set-default-runtime -r runc
 
 .PHONY: k3d
-k3d:
+k3d: k3d-with-registry
 	curl -s https://raw.githubusercontent.com/rancher/k3d/master/install.sh | bash
+
+.PHONY: k3d-with-registry
+k3d-with-registry:
+	curl -s https://raw.githubusercontent.com/windmilleng/k3d-local-registry/master/k3d-with-registry.sh > /usr/local/bin/k3d-with-registry.sh && chmod a+x "/usr/local/bin/k3d-with-registry.sh"
 
 .PHONY: k3d-delete-cluster
 k3d-delete-cluster:
@@ -264,18 +261,7 @@ k3d-delete-cluster:
 	rm -f $(HOME)/.kube/config
 
 .PHONY: k3d-create-cluster
-k3d-create-cluster: k3d-delete-cluster k3d-local-registry
-	k3d create --publish 8080:80 8443:443 --wait 0 --auto-restart --volume /home/${USER}/.k3d/config.toml.tmpl:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
-	docker network connect k3d-k3s-default registry.local
-	echo "127.0.0.1 registry.local" | sudo tee -a /etc/hosts
-	k3d start
+k3d-create-cluster: k3d-delete-cluster
+	k3d-with-registry.sh
 	sleep 10
 	ln -sf `k3d get-kubeconfig` $(HOME)/.kube/config
-
-.PHONY: k3d-local-registry
-k3d-local-registry:
-	docker container rm --force registry.local && docker volume rm local_registry || echo "registry currently not running"
-	docker volume create local_registry
-	docker container run -d --name registry.local -v local_registry:/var/lib/registry --restart always -p 5000:5000 registry:2
-	mkdir -p /home/${USER}/.k3d
-	cat yaml/config.toml.tmpl > /home/$(USER)/.k3d/config.toml.tmpl
