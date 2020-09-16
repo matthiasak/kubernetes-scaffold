@@ -1,43 +1,21 @@
-BREW_MISSING="Brew is missing from your PATH. Install brew (https://brew.sh/) and/or fix your config, then re-run this script."
 DOCKER_MISSING="Docker is missing from your PATH."
 DOCKER_STOPPED="We were unable to invoke 'docker ps' -- is Docker running? is the daemon's socket file accessible to your current user?"
 REDUCE_PERMISSIONS="Do not run this as the root user! Please re-run as your normal user"
 EMAIL="..."
 DIR=$(CURDIR)
 UNAME := $(shell uname)
-
-ifeq ($(UNAME),Darwin)
-	IS_MAC := 1
-	IS_LINUX := 0
-	KIND_BINARY := "kind-darwin-amd64"
-	HELM_BINARY := "darwin-amd64"
-	DIVE_BINARY := "darwin_amd64
-else
-	IS_MAC := 0
-	IS_LINUX := 1
-	KIND_BINARY := "kind-linux-amd64"
-	HELM_BINARY := "linux-amd64"
-	DIVE_BINARY := "linux_amd64"
-endif
-
-GO_VERSION := "1.12.9"
-DIVE_VERSION := "0.8.1"
+KIND_BINARY := "kind-linux-amd64"
+HELM_BINARY := "linux-amd64"
+DIVE_BINARY := "linux_amd64"
+GO_VERSION := "1.15.2"
+DIVE_VERSION := "0.9.2"
 
 .PHONY: env
 .DEFAULT_GOAL := env
-env: ensure-not-root ensure-sudo-access ensure-docker ensure-usr-local-bin-writeable
-	echo "STARTING BUILD..."
-ifeq ($(IS_MAC), 1)
-	$(MAKE) mac 2>&1 | tee $(LOG_FILE)
-else
-	$(MAKE) linux 2>&1 | tee $(LOG_FILE)
-endif
-
-.PHONY: mac
-mac: ensure-xcode k3d kind k8s-mac go-mac jq-mac kubefwd-mac tilt helm-v3 setup-cluster
+env: ensure-not-root ensure-sudo-access ensure-docker ensure-usr-local-bin-writeable linux
 
 .PHONY: linux
-linux: docker-usermod k3d kind k8s-linux go-linux jq-linux kubefwd-linux tilt helm-v3 setup-cluster
+linux: docker-usermod k3d kind k8s-linux go-linux jq-linux tilt helm-v3 setup-cluster
 
 .PHONY: ensure-sudo-access
 ensure-sudo-access:
@@ -55,8 +33,7 @@ hard-purge-containers: ensure-sudo-access
 	sudo service docker start
 
 .PHONY: setup-cluster
-setup-cluster: k3d-create-cluster nginx kubedb
-# setup-cluster: kind-create-cluster nginx kubedb
+setup-cluster: k3d-create-cluster
 
 .PHONY: install-docker-ubuntu
 install-docker-ubuntu:
@@ -65,17 +42,6 @@ install-docker-ubuntu:
 	sudo apt-key fingerprint 0EBFCD88
 	sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 	sudo apt install docker-ce
-
-.PHONY: microk8s
-microk8s: ensure-sudo-access
-	test `which microk8s.enable`="" && sudo snap install microk8s --classic && microk8s.enable && microk8s.start || echo "microk8s already installed"
-	mkdir -p ~/.kube
-	microk8s.config > ~/.kube/config
-	microk8s.enable dns registry storage
-
-.PHONY: ensure-xcode
-ensure-xcode:
-	@xcode-select --install || echo "xcode already installed."
 
 .PHONY: ensure-usr-local-bin-writeable
 ensure-usr-local-bin-writeable: ensure-sudo-access
@@ -86,36 +52,24 @@ ensure-docker:
 	@which docker &> /dev/null || (echo $(DOCKER_MISSING) && exit 1)
 	@docker ps &> /dev/null || (echo $(DOCKER_STOPPED) && exit 1)
 
-.PHONY: ensure-brew
-ensure-brew:
-	@which brew || (echo $(BREW_MISSING) && exit 1)
-
 .PHONY: kind
 kind: ensure-usr-local-bin-writeable
-	curl https://github.com/kubernetes-sigs/kind/releases/download/v0.5.1/$(KIND_BINARY) -o /usr/local/bin/kind --location
+	curl https://github.com/kubernetes-sigs/kind/releases/download/v0.9.0/$(KIND_BINARY) -o /usr/local/bin/kind --location
 	chmod +x /usr/local/bin/kind
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.1.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.3.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
 	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
 	helm repo update
 
-.PHONY: k8s-mac
-k8s-mac: ensure-brew
-	brew upgrade kubernetes-cli || brew install kubernetes-cli
-	brew link --overwrite kubernetes-cli
 
 .PHONY: k8s-linux
 k8s-linux: ensure-usr-local-bin-writeable
 	curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
 	chmod +x ./kubectl
 	mv kubectl /usr/local/bin/kubectl
-
-.PHONY: go-mac
-go-mac: ensure-brew
-	brew upgrade go || brew install go
 
 .PHONY: go-linux
 go-linux: ensure-usr-local-bin-writeable
@@ -124,26 +78,16 @@ go-linux: ensure-usr-local-bin-writeable
 	chmod +x /usr/local/bin/godoc
 	chmod +x /usr/local/bin/gofmt
 
-.PHONY: jq-mac
-jq-mac: ensure-brew
-	brew upgrade jq || brew install jq
-
 .PHONY: jq-linux
 jq-linux: ensure-usr-local-bin-writeable
 	curl -L https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -o /usr/local/bin/jq
 	chmod +x /usr/local/bin/jq
 
-.PHONY: kubefwd-mac
-kubefwd-mac: ensure-brew
-	brew upgrade txn2/tap/kubefwd || brew install txn2/tap/kubefwd
-
-.PHONY: kubefwd-linux
-kubefwd-linux: ensure-usr-local-bin-writeable
-	curl -L https://github.com/txn2/kubefwd/releases/download/v1.8.3/kubefwd_linux_amd64.tar.gz | tar xzv kubefwd && mv kubefwd /usr/local/bin/kubefwd
-
 .PHONY: tilt
 tilt:
-	curl -fsSL https://raw.githubusercontent.com/windmilleng/tilt/master/scripts/install.sh | bash
+	#curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+	curl -fsSL https://github.com/tilt-dev/tilt/releases/download/v0.17.4/tilt.0.17.4.linux.x86_64.tar.gz | tar -xzv tilt
+	sudo mv tilt /usr/local/bin/tilt
 	echo "n" | tilt analytics opt out
 
 .PHONY: kind-delete-cluster
@@ -170,40 +114,6 @@ docker-usermod: ensure-sudo-access
 	sudo systemctl enable docker
 	sudo systemctl restart docker
 
-.PHONY: istio
-istio:
-	kubectl delete namespace istio-system &> /dev/null || echo "istio-system namespace not setup."
-	kubectl create namespace istio-system
-	helm repo add istio.io https://storage.googleapis.com/istio-release/releases/1.2.4/charts/
-	helm install istio-init istio.io/istio-init --namespace istio-system
-	while [ `kubectl api-resources --api-group=config.istio.io -o wide --no-headers | wc -l | awk '{print $1}'` -eq 0 ]; do sleep 1; done
-	helm install istio istio.io/istio --namespace istio-system --set certmanager.email=$(EMAIL) --set nodeagent.enabled=false
-	kubectl label namespace default istio-injection=enabled
-	kubectl apply -f $(DIR)/yaml/istio.global-resources.yaml
-
-
-.PHONY: nginx
-nginx:
-	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
-	helm upgrade --install ingress stable/nginx-ingress --set rbac.create=true --set serviceAccount.create=true --set controller.service.type=LoadBalancer
-
-
-.PHONY: kubedb
-kubedb:
-	curl -fsSL https://raw.githubusercontent.com/kubedb/cli/0.12.0/hack/deploy/kubedb.sh | bash -s
-
-.PHONY: exec-alpine
-exec-alpine:
-	kubectl run -it alpine --image=alpine:latest --restart=Never --rm -- sh
-
-.PHONY: certmanager
-certmanager:
-	echo "Make sure to set an EMAIL env var"
-	helm repo add jetstack https://charts.jetstack.io
-	helm repo update
-	helm upgrade -i cert-manager jetstack/cert-manager --set ingressShim.defaultIssuerName=letsencrypt-prod --set ingressShim.defaultIssuerKind=ClusterIssuer --atomic
-	envsubst < ./yaml/certmanager-prod.yaml | kubectl apply -f -
-
 .PHONY: dive
 dive:
 	cd "$(mktemp -d)" && curl -L -O "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_${DIVE_BINARY}.tar.gz" && tar -xzf dive_${DIVE_VERSION}_${DIVE_BINARY}.tar.gz && mv dive /usr/local/bin/dive && chmod a+x /usr/local/bin/dive
@@ -214,14 +124,21 @@ krew:
 	set -x; cd "$(mktemp -d)" && curl -fsSLO "https://storage.googleapis.com/krew/v0.2.1/krew.{tar.gz,yaml}" && tar zxvf krew.tar.gz && ./krew-"$(uname | tr '[:upper:]' '[:lower:]')_amd64" install --manifest=krew.yaml --archive=krew.tar.gz
 	echo "Add '~/.krew/bin to your path, then you can use krew with kubectl ('kubectl krew ...')."
 
-.PHONY: polaris
-polaris:
-	helm repo add fairwinds-stable https://charts.fairwinds.com/stable
-	helm upgrade --install polaris fairwinds-stable/polaris --namespace polaris
-
 .PHONY: polaris-dashboard
 polaris-dashboard:
 	kubectl port-forward --namespace polaris svc/polaris-dashboard 8080:80
+
+.PHONY: polaris-validating-webhook-helm
+polaris-validating-webhook-helm:
+	helm repo add fairwindsops-stable https://charts.fairwindsops.com/stable
+	helm upgrade --install polaris fairwindsops-stable/polaris --namespace polaris --set webhook.enable=true --set dashboard.enable=false
+
+polaris-validating-webhook-yaml:
+	kubectl apply -f https://github.com/fairwindsops/polaris/releases/latest/download/webhook.yaml
+
+# TODO: setup some CI/CD or githooks to use the CLI for validating?
+# polaris-cli:
+# 	curl
 
 .PHONY: popeye
 popeye:
@@ -230,38 +147,61 @@ popeye:
 
 .PHONY: stern
 stern:
-	wget https://github.com/wercker/stern/releases/download/1.10.0/stern_linux_amd64 -O /usr/local/bin/stern
+	wget https://github.com/wercker/stern/releases/download/1.11.0/stern_linux_amd64 -O /usr/local/bin/stern
 	chmod a+x /usr/local/bin/stern
 
 .PHONY: kube-bench
 kube-bench:
-	curl -L https://github.com/aquasecurity/kube-bench/releases/download/v0.0.34/kube-bench_0.0.34_linux_amd64.tar.gz | tar xzv -C /usr/local/bin kube-bench
+	curl -L https://github.com/aquasecurity/kube-bench/releases/download/v0.3.1/kube-bench_0.0.34_linux_amd64.tar.gz | tar xzv -C /usr/local/bin kube-bench
 	chmod a+x /usr/local/bin/kube-bench
 
-.PHONY: img-tool
-img-tool:
-	curl -fSL "https://github.com/genuinetools/img/releases/download/v0.5.7/img-linux-amd64" -o "/usr/local/bin/img" && chmod a+x "/usr/local/bin/img"
-
-clear-linux-runc:
-	sudo swupd bundle-add cloud-control cloud-native-basic
-	sudo docker-set-default-runtime -r runc
+.PHONY: k3sup
+k3sup: ensure-sudo-access
+	curl -sLS https://get.k3sup.dev | sh
+	sudo install k3sup /usr/local/bin/
 
 .PHONY: k3d
-k3d: k3d-with-registry
-	curl -s https://raw.githubusercontent.com/rancher/k3d/master/install.sh | bash
+k3d:
+	curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
 
-.PHONY: k3d-with-registry
-k3d-with-registry:
-	curl -s https://raw.githubusercontent.com/windmilleng/k3d-local-registry/master/k3d-with-registry.sh > /usr/local/bin/k3d-with-registry.sh && chmod a+x "/usr/local/bin/k3d-with-registry.sh"
+# .PHONY: k3d-with-registry
+# k3d-with-registry:
+# 	curl -s https://raw.githubusercontent.com/windmilleng/k3d-local-registry/master/k3d-with-registry.sh > /usr/local/bin/k3d-with-registry.sh && chmod a+x "/usr/local/bin/k3d-with-registry.sh"
+
+.PHONY: local-registry
+local-registry: ensure-sudo-access
+	docker volume create local_registry || echo "already created local registry"
+	docker container run -d --name registry.localhost -v local_registry:/var/lib/registry --restart always -p 5000:5000 registry:2 || echo "----"
+	docker network connect k3d-k3s-default registry.localhost || echo "----"
+	sudo apt install libnss-myhostname
+	cp ./yaml/k3d-registries.yaml ~/k3d-registries.yaml
 
 .PHONY: k3d-delete-cluster
 k3d-delete-cluster:
-	k3d d -a || echo "No existing clusters found."
-	echo "END WARNING"
+	k3d cluster delete --all || echo "No existing clusters found."
 	rm -f $(HOME)/.kube/config
 
 .PHONY: k3d-create-cluster
-k3d-create-cluster: k3d-delete-cluster
-	k3d-with-registry.sh
-	sleep 10
-	ln -sf `k3d get-kubeconfig` $(HOME)/.kube/config
+k3d-create-cluster: k3d-delete-cluster local-registry
+	ln -sf `k3d kubeconfig get mycluster` $(HOME)/.kube/config
+	k3d cluster create mycluster --volume ~/k3d-registries.yaml:/etc/rancher/k3s/registries.yaml
+
+.PHONY: kubeent
+kubeent: ensure-sudo-access
+	sh -c "$(curl -sSL 'https://git.io/install-kubent')"
+
+.PHONY: kontena-lens
+kontena-lens: ensure-sudo-access
+	sudo snap install kontena-lens --classic
+
+# Same binaries as https://releases.hashicorp.com/
+.PHONY: hashi-apt
+hashi-apt: ensure-sudo-access
+	curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+	sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+
+.PHONY: portmaster
+portmaster: ensure-sudo-access
+	curl -OL https://updates.safing.io/latest/linux_amd64/packages/portmaster-installer.deb
+	sudo dpkg -i portmaster-installer.deb
+	rm portmaster-installer.deb
