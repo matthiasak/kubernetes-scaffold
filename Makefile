@@ -59,7 +59,7 @@ kind: ensure-usr-local-bin-writeable
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.3.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.4.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
 	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
 	helm repo update
@@ -179,7 +179,7 @@ local-registry: ensure-sudo-access
 .PHONY: k3d-delete-cluster
 k3d-delete-cluster:
 	k3d cluster delete --all || echo "No existing clusters found."
-	rm -f $(HOME)/.kube/config
+	rm -f $(HOME)/.kube/config ~/k3d-registries.yaml
 
 .PHONY: k3d-create-cluster
 k3d-create-cluster: k3d-delete-cluster local-registry
