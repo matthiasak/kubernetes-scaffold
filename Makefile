@@ -7,7 +7,7 @@ UNAME := $(shell uname)
 KIND_BINARY := "kind-linux-amd64"
 HELM_BINARY := "linux-amd64"
 DIVE_BINARY := "linux_amd64"
-GO_VERSION := "1.15.2"
+GO_VERSION := "1.15.5"
 DIVE_VERSION := "0.9.2"
 
 .PHONY: env
@@ -59,9 +59,9 @@ kind: ensure-usr-local-bin-writeable
 
 .PHONY: helm-v3
 helm-v3: ensure-usr-local-bin-writeable
-	curl -L https://get.helm.sh/helm-v3.4.1-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
+	curl -L https://get.helm.sh/helm-v3.4.2-$(HELM_BINARY).tar.gz | tar xzv -C /usr/local/bin --strip-components=1 $(HELM_BINARY)/helm
 	chmod a+x /usr/local/bin/helm
-	helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+	helm repo add stable https://charts.helm.sh/stable --force-update
 	helm repo update
 
 
@@ -86,7 +86,7 @@ jq-linux: ensure-usr-local-bin-writeable
 .PHONY: tilt
 tilt:
 	#curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
-	curl -fsSL https://github.com/tilt-dev/tilt/releases/download/v0.17.4/tilt.0.17.4.linux.x86_64.tar.gz | tar -xzv tilt
+	curl -fsSL https://github.com/tilt-dev/tilt/releases/download/v0.18.3/tilt.0.18.3.linux.x86_64.tar.gz | tar -xzv tilt
 	sudo mv tilt /usr/local/bin/tilt
 	echo "n" | tilt analytics opt out
 
@@ -158,7 +158,6 @@ kube-bench:
 .PHONY: k3sup
 k3sup: ensure-sudo-access
 	curl -sLS https://get.k3sup.dev | sh
-	sudo install k3sup /usr/local/bin/
 
 .PHONY: k3d
 k3d:
