@@ -204,3 +204,35 @@ portmaster: ensure-sudo-access
 	curl -OL https://updates.safing.io/latest/linux_amd64/packages/portmaster-installer.deb
 	sudo dpkg -i portmaster-installer.deb
 	rm portmaster-installer.deb
+
+.PHONY: kustomize
+kustomize:
+	curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+
+system-upgrade-controller-install:
+	kustomize build github.com/rancher/system-upgrade-controller | kubectl apply -f -
+
+#######
+# SERVICE MESH
+#######
+
+linkerd-bin:
+	curl -sL https://run.linkerd.io/install | sh
+
+linkerd-install:
+	linkerd check --pre
+	linkerd install | kubectl apply -f -
+	# checks if control plane is setup
+	linkerd check
+	# linkerd dashboard to port forward to the linkerd-web pod
+	# add linkerd sidecar with "cat file.yaml | linkerd inject - | kubectl apply -f -"
+	# OR add linkerd to an existing deployment by getting the yaml from k8s and injecting
+	#   "kubectl get deployment.. -o yaml | linkerd inject - | kubectl apply -f"
+	# check if the proxy is setup correctly:
+	#	 linkerd -n emojivoto check --proxy
+	# get stats:
+	#	linkerd stat --all-namespaces deploy
+	# watch live requests/paths:
+	#	linkerd -n emojivoto top deploy/web
+	# or watch livetcp connections
+	# 	linkerd -n emojivoto tap deploy/web
