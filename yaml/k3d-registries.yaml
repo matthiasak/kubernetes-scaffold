@@ -1,4 +1,0 @@
-mirrors:
-  my.company.registry:
-    endpoint:
-      - http://registry.localhost
